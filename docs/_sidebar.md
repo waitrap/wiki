@@ -4,3 +4,5 @@
   * [bash语法整理](linux/bash语法整理.md)
 * **运维技术**
   * [iptables](运维技术/iptables.md)
+* **故障总结**
+  * [常见故障总结](故障总结/故障总结.md)
