@@ -2,3 +2,10 @@ site_name: wain's wiki
 
 theme:
   name: material
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+
+
