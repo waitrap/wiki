@@ -8,4 +8,9 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.superfences
 
+markdown_extensions:
+  - attr_list
+  
+plugins:
+  - glightbox
 
