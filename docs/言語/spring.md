@@ -127,7 +127,7 @@ List<ItemBean> itemBeans = itemList.stream()
 // javaBeanはビューに入れる
 model.addAttribute("items", itemBeans);
 ```
-### データの更新
+### データの登録
 ```java
 public String createComplete(ItemForm form,Model model) { 
        Item item = new Item(); 
@@ -142,6 +142,114 @@ public String createComplete(ItemForm form,Model model) {
        return "items/item"; 
 }
 ```
+### データの更新
+```java
+@RequestMapping(path = "/items/update/complete/{id}", method = RequestMethod.POST)
+public String updateComplete(@PathVariable Integer id, ItemForm form, Model model) {
+    // 更新するレコードを見つける
+    Item item = repository.getReferenceById(id);
+    // 主キー（Primary Key）は、そのレコードの一意な識別子を表す
+    // 一般的に、変更しない
+    BeanUtils.copyProperties(form, item, "id");
+    item=repository.save(item);
+    ItemBean itemBean = new ItemBean();
+    BeanUtils.copyProperties(item,itemBean);
+    model.addAttribute("item", itemBean);
+    return "items/item";
+}
+```
+### データの削除
+```java
+@RequestMapping(path = "/items/delete/complete", method = RequestMethod.POST)
+public String deleteComplete(ItemForm form) {
+    repository.deleteById(form.getId());// idで削除する
+    return "redirect:/items/findAll";
+}
+```
+
+### 外部参照
+外部参照元の中で、自分の参照フィールドを使わずに、**外部参照先テーブルのエンティティをフィールドとして定義する**。
+```java
+public class ItemWithCategory {
+        　//....
+	 private Integer id; 
+	 
+	 @Column 
+	 private Integer price;
+	 
+     　　//元々コラム名は　category_id
+	 @ManyToOne // 多対１
+	 @JoinColumn(name = "category_id", referencedColumnName = "id") // id は参照先エンティティのフィールド名
+	 private Category category;　// 参照先のエンティティ
+}
+```
+外部キーによる条件検索するとき、全て参照先のエンティティを使う。
+```java
+// リポジトリのメソッドの定義　Categoryを使う
+List<ItemWithCategory> findByCategory(Category category);
+
+// 呼び出し方式
+@RequestMapping("/items/searchByCategoryId/{categoryId}") 
+public String searchByCategoryId(@PathVariable Integer categoryId, Model model) { 
+     
+    Category category = new Category(); 
+
+    category.setId(categoryId); //categoryIdだけだ 他のフィールド設定していない！！！！！
+    //Categoryのオブジェクト内のidフィールドを使用した条件検索を実行 
+    List<ItemWithCategory> items = repository.findByCategory(category); 
+}
+```
+### JPQLの使う
+
+JPQLとはJava Persistence Query Language,SQL文に似ているが、データベースのテーブルを直接操作するのではなく、エンティティのオブジェクトを操作してCRUD処理を行います。
+**JPQLの基本構文**
+```java
+// select
+SELECT ... FROM<エンティティ><エンティティの略称>[WHERE...][GROUP BY...][HAVING...][ORDER BY...]
+SELECT i FROM Item i WHERE i.price >=100 
+// update
+UPDATE <エンティティ名> <エンティティの略称> SET ... [WHERE ...]
+UPDATE Item i SET i.price = 100 WHERE i.id = 1
+// delete
+DELETE FROM <エンティティ名> <エンティティの略称> [WHERE ...]
+DELETE FROM Item i WHERE i.price < 100
+```
+**@NamedQueryで利用する**
+```java
+// エンティティーの所でquery文を定義する
+@Entity
+@Table(name = "items_with_categories")
+@NamedQuery(name="findByIdNamedQuery",
+query="SELECT i FROM ItemWithCategory i WHERE i.id = :id")
+public class ItemWithCategory{
+}
+// コントラクターの中で　EntityManagerを使って、Queryオブジェクトを生成する
+public class ItemWithCategoryController {
+@Autowired
+EntityManager entityManager;
+//......
+@RequestMapping("/items/searchWithNamedQuery/{id}")
+public String searchWithNamedQuery(@PathVariable Integer id, Model model) {
+Query query = entityManager.createNamedQuery("findByIdNamedQuery");
+query.setParameter("id", id); //:idに具体的な値を渡す
+// またgetSingleResult()　executeUpdate()→（UPDATE文やDELETE文）がある
+model.addAttribute("items", query.getResultList());　// 結果を取る
+return "items/item_category_list";
+}
+}
+```
+**@Queryで利用する**
+```java
+// リポジトリの中で定義する
+@Query("SELECT i FROM ItemWithCategory i WHERE i.id = :id")
+List<ItemWithCategory> findByIdQuery(@Param("id") Integer id);　
+// ここで名findByIdQueryは固定してなくて、自由でもいい
+// @Param("id")で引数の値はsql文の:idに渡す
+
+// パラメータ位置指定方式
+@Query("SELECT i FROM ItemWithCategory i WHERE i.id = ?1 AND i.price >= ?2")
+public List<ItemWithCategory> findByIdAndPriceQuery(Integer id,Integer price);
+```
 ## url中のパスパラメータ
 ```java
 // メソッドのpriceとパス中のprice,名前は同じになる必要がある。そうしなければ
@@ -150,6 +258,39 @@ public String createComplete(ItemForm form,Model model) {
 public String showItemListByPrice(@PathVariable Integer price, Model model) { 
 	//......
 } 
+```
+## 入力チェック
+依存ライブラリの設定する（pom.xml）必要がある。
+Formクラスの中のフィールドにチェックする用アノテーションを付ける。
+```java
+public class LoginFormWithValidation {
+    @NotNull
+    @Max(value = 999)
+    private Integer userId;
+
+    @NotBlank
+    @Size(max = 16)
+    @Pattern(regexp = "^[a-zA-Z0-9]+$")
+    private String password;
+}
+```
+**日付型の形式チェックするとき、application.propertiesの中で設置する。`spring.mvc.format.date=[日付の形式]`**
+チェックするために、コントラクターの中のメソッドの`form`引数`@Vaild`を付ける必要がある。
+```java
+@RequestMapping(path = "/loginWithValidation", method = RequestMethod.POST)
+public String doLoginWithValidation(
+@Valid @ModelAttribute LoginFormWithValidation form,
+BindingResult result,HttpSession session) {
+if (result.hasErrors()) { //BindingResultを使ってチェック結果が取れる
+return "session/login_with_validation";
+}
+
+// ......
+//@ModelAttributeを使ったら、LoginFormWithValidationはビューに渡すことできる
+//デフォルトト属性名は、"引数の型の先頭を小文字にした名前"が設定される　loginFormWithValidation
+// 明示すると、　@ModelAttribute("myForm") LoginFormWithValidation form
+// 後で、ビューの中でmyFormが使える
+}
 ```
 ## アノテーション
 -   `@Controller`:HTMLビュー（Thymeleafなど）を返す用途で使われる。クラスは `Bean`になる。
