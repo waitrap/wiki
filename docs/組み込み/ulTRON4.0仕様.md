@@ -130,6 +130,7 @@ ER ercd = cre_sem(ID semid,T_CSEM *pk_csem); // セマフォの生成
 ER ercd = sig_sem(ID semid); // セマフォ資源の返却  セマフォにプラス１
 ER ercd = wai_sem(ID semid); // セマフォ資源の獲得
 ```  
+**具体的な例**
 ```c
 // セマフォを作る
 T_CSEM csem = {
@@ -216,7 +217,7 @@ void comm_task(VP_INT exinf) {
 ```
 
 ### データキュー
-1ワードのメッセージを受け渡することにより、同期と通信を行うためのオブジェクトである。
+1ワードのメッセージを受け渡すことにより、同期と通信を行うためのオブジェクトである。
 
 **データキュー生成情報**
 ```c
@@ -303,6 +304,7 @@ cre_mbx(1,&cmbx); // ID=1 のメールボックス生成
 // メッセージ構造体の定義
 typedef struct {
     T_MSG msg_header;  // メールボックス用ヘッダ（必須）
+    　　　　　　　　　　// 優先度を使いたいならT_MSG_PRIを書く
     int data; // 実際に送りたいデータ
 }MY_MSG;
 
@@ -326,7 +328,7 @@ syslog(LOG_NOTICE, "受信データ = %d", my->data);
 
 - **優先度継承プロトコル**：　リソースを持っている低優先度タスクの優先度を、一時的に「待っている中で一番高いタスク」と同じに引き上げる。
 
-- **優先度上限プロトコル**：リソースごとに「上限優先度（最大優先度）」を決めておき、それ以上のタスクしか使えないようにする。
+- **優先度上限プロトコル**：リソースごとに「上限優先度（最大優先度）」を決めておき、それ以上のタスクしか使えないようにする。低優先度のタスク資源を使えない、中優先度のタスクは高優先度のタスクに影響を与えられない。
 
 **ミューテックス生成情報**
 ```c
@@ -608,6 +610,190 @@ void user_task(VP_INT exinf) {
     }
 }
 
+```
+## 割り込み管理機能
+割り込み管理機能は、外部割込みによって起動される割込みハンドラおよび割り込みサービスルーチンを管理するための機能である。
+
+**割込みハンドラおよびサービスルーチン定義情報**
+```c
+typedef struct t_dinh{
+    ATR inhatr; // 割込みハンドラ属性
+    FP　inthdr; // 割込みハンドラの起動番地
+}T_DINH;
+typedef struct t_cisr{
+    ATR isratr; // 割り込みサービスルーチン属性
+    VP_INT exinf; // 割り込みサービスルーチンの拡張情報
+    INTNO　intno; // 割り込みサービスルーチンを付加する割り込み番号
+    FP isr; // 割り込みサービスルーチンの起動番地
+}
+```
+**APIの説明**
+```c
+ER ercd = def_inh(INHNO inhno,T_DINH *pk_dinh);// 割込みハンドラの定義
+ER ecrd = cre_isr(ID isrid,T_CISR *pk_cisr); // 割込みサービスルーチンの生成
+ER ercd = ena_int(INTNO intno); // 割込みの許可
+```
+
+**具体的な例**
+```c
+#define IRQ_NUM  5       // 使用する割込み番号
+
+/* 1. 割込みハンドラ（Inh）：ハードウェア割込み発生直後に実行 */
+void my_inh_handler(void){
+    // 最小限の処理
+    // ......
+}
+/*2. 割込みサービスルーチン（ISR）：Inh 後に起動されるユーザ処理 */
+void my_isr(VP_INT exinf){
+    // 「重め」の処理
+    // ......
+}
+/* 3. 割込みの定義と有効化を行う初期化関数 */
+void setup_interrupt(void){
+    ER ercd;
+    // 割込みハンドラの定義
+    T_DINH dinh = {
+        inhatr = TA_ENAINT, // 応答許可
+        inthdr = my_inh_handler
+    };
+    ercd = def_inh(IRQ_NUM,&dinh);
+
+/*4.割込みサービスルーチンの定義 */
+T_CISR cisr = {
+    isratr = TA_ACT, // 起動属性：自動起動型
+    exinf = 0, // 拡張情報 (任意設定可)
+    intno = IRQ_NUM,// 対応する割込み番号
+    isr = my_isr
+};
+ercd = cre_isr(1,&cisr);
+
+// 割込みの有効化
+ercd = ena_int(IRQ_NUM);
+}
+```
+## 時間管理機能
+時間管理機能は、時間に依存した処理を行うための機能である。システム時刻管理、周期ハンドラ、アラームハンドラ、オーバランハンドラの各機能が含まれる。
+
+### システム時刻管理
+システム時刻を操作するための機能である。システム時刻を設定/参照する機能、タイムティックを供給してシステム時刻を更新する機能が含まれる。
+
+**APIの説明**
+```c
+// システム時刻の設定
+ER ercd = set_tim(SYSTIM *p_systim);
+// システム時刻の参照
+ER ercd = get_tim(SYSTIM *p_systim);
+```
+
+**使い方の例**
+```c
+// 今の時刻を獲得する
+SYSTEM now;
+ER　ercd;
+ercd = get_utim(&now);
+
+// 時刻を設定する
+SYSTIM   init_time;
+init_time.ut_year  = 2025;
+init_time.ut_mon   = 7;
+init_time.ut_day   = 17;
+init_time.ut_hour  = 12;
+init_time.ut_min   = 0;
+init_time.ut_sec   = 0;
+ercd = set_utim(&init_time);
+```
+
+### 周期ハンドラ
+周期ハンドラは,一定周期で起動されるタイムイベントハンドラである。
+
+**生成情報構造体**
+```c
+void cychdr(VP_INT exinf)
+{
+    周期ハンドラ本体
+}
+typedef struct t_ccyc{
+    ATR cycatr; //周期ハンドラ属性
+    VP_INT exinf; // 周期ハンドラの拡張情報
+    FP　cychdr; // 周期ハンドラの起動番地
+    RELTIM　cyctim; // 周期ハンドラの起動周期
+    RELTIM　cycphs; // 周期ハンドラの起動位相
+}T_CCYC
+```
+**APIの説明**
+```c
+// 周期ハンドラの生成
+ER ercd = cre_cyc(ID cycid,T_CCYC *pk_ccyc);
+// 周期ハンドラの動作開始
+ER ercd = sta_cyc(ID cycid);
+```
+**具体的な例**
+```c
+void led_cyc_handler(VP_INT exinf)
+{
+    // 周期ハンドラ関数本体
+    // ......
+}
+
+// 周期ハンドラ初期化処理
+void setup_create(void){
+    ER ercd;
+    T_CCYC ccyc = {
+        cycatr = TA_HLNG,//高級言語用
+        exinf = 0, // 拡張情報（不要なら0）
+        cyctim = 1000, // 周期：1000ミリ秒
+        cycphs = 0, // 最初の起動遅延：0ミリ秒
+        cychdr = led_cyc_handler // ハンドラ関数
+    };
+
+    ercd = cre_cyc(1,&ccyc);
+
+    ercd = sta_cyc(1);
+
+}
+```
+### アラームハンドラ
+アラームハンドラは、指定した時刻に起動されるタイムイベントハンドラである。
+
+**生成情報構造体**
+```c
+void almhdr(VP_INT exinf){
+    アラームハンドラ本体
+}
+typedef struct t_calm{
+    ATR almatr; // アラームハンドラ属性
+    VP_INT exinf;　// アラームハンドラの拡張情報
+    FP almhdr;　// アラームハンドラの起動番地
+}T_CALM;
+
+```
+**apiの説明**
+```c
+// アラームハンドラの生成
+ER ercd = cre_alm(ID almid,T_CALM *pk_calm);
+// アラームハンドラの動作開始
+ER ercd = sta_alm(ID almid,RELTIM almtim); 
+
+```
+**具体的な例**
+```c
+void alarm_handler(VP_INT exinf){
+    /* アラームハンドラ本体：指定時間後に呼ばれる */
+    //......
+}
+
+void setup_alarm(void){
+    ER ercd;
+    T_CALM calm={
+        almatr = TA_HLNG,
+        exinf = 0,
+        almhdr = alarm_handler
+    };
+
+    ercd = cre_alm(1,&calm);
+    //2000 ms後　アラームの開始
+    ercd = sta_alm(1,2000);
+}
 ```
 
 ## 型の説明
