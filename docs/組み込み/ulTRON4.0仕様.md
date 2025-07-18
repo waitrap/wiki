@@ -625,7 +625,7 @@ typedef struct t_cisr{
     VP_INT exinf; // 割り込みサービスルーチンの拡張情報
     INTNO　intno; // 割り込みサービスルーチンを付加する割り込み番号
     FP isr; // 割り込みサービスルーチンの起動番地
-}
+}T_CISR;
 ```
 **APIの説明**
 ```c
