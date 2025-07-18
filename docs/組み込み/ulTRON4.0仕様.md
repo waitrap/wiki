@@ -410,10 +410,10 @@ ER_UINT msgsz = rcv_mbf(ID mbfid,VP msg);
 // バッファの生成
 static UB mbf_buffer[BUF_SIZE];  // バッファ領域（UB＝unsigned char）
 T_CMBF cmbf = {
-    .mbfatr = TA_TFIFO,    // FIFO順で処理
-    .maxmsz = 64,     // 1メッセージ最大サイズ
-    .mbfsz  = 256,    // 総バッファサイズ
-    .mbf    = (VP)mbf_buffer  // 自前のバッファ
+    mbfatr = TA_TFIFO,    // FIFO順で処理
+    maxmsz = 64,     // 1メッセージ最大サイズ
+    mbfsz  = 256,    // 総バッファサイズ
+    mbf    = (VP)mbf_buffer  // 自前のバッファ
 };
 
 ER ercd = cre_mbf(1, &cmbf);
